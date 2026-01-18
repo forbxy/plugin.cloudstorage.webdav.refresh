@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.cloudstorage.webdav.refresh" name="WebDAV Refresh (OpenList)" version="0.1.0" provider-name="forbxy">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.requests" version="2.25.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Refreshes WebDAV/OpenList directory</summary>
+        <description lang="en_GB">Triggers a remote refresh on OpenList/AList server for the current directory.</description>
+        <platform>all</platform>
+    </extension>
+</addon>
