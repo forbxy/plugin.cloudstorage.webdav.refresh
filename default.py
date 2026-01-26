@@ -81,7 +81,22 @@ def find_credentials_in_passwords_xml(target_path):
         
     return None, None
 
+def strip_url_params(path):
+    # Basic strip of URL parameters if present
+    if '?' in path:
+        return path.split('?', 1)[0]
+    return path
+
 def main():
+    # 0. Parse Arguments
+    args = {}
+    for arg in sys.argv[1:]:
+        if '=' in arg:
+            key, val = arg.split('=', 1)
+            args[key.lower()] = val.strip()
+            
+    is_recursive = args.get('recursive', 'false').lower() == 'true'
+
     # 1. Get Context
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
     
@@ -159,7 +174,7 @@ def main():
     # === EXECUTION ===
     try:
         if refresher.login():
-            if refresher.refresh(parsed.path):
+            if refresher.refresh(parsed.path, recursive=is_recursive):
                 # Only reload Kodi container if refresh trigger was successful
                 # (Skipping root returns True, so it will reload too, which is fine)
                 xbmc.executebuiltin("Container.Refresh")
@@ -171,3 +186,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

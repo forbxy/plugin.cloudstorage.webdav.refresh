@@ -3,6 +3,7 @@ import urllib.parse
 import xbmc
 import xbmcgui
 import json
+import posixpath
 
 try:
     import requests
@@ -62,12 +63,10 @@ class OpenListRefresher:
             xbmc.log("OpenList Login Exception: " + str(e), xbmc.LOGERROR)
             return False
 
-    def refresh(self, raw_path):
+    def refresh(self, raw_path, recursive=False):
         if not self.token:
             return False
 
-        refresh_url = "{}/api/fs/list".format(self.base_url)
-        
         # Path processing logic specific to OpenList/AList (strips /dav prefix usually)
         # raw_path comes from urllib.parse.path, e.g. /dav/folder
         
@@ -84,13 +83,27 @@ class OpenListRefresher:
         # URL Decode
         real_path = urllib.parse.unquote(real_path)
 
+        if recursive:
+             xbmcgui.Dialog().notification('OpenList', '开始递归刷新...', xbmcgui.NOTIFICATION_INFO, 1000)
+        else:
+             xbmcgui.Dialog().notification('OpenList', '开始刷新...', xbmcgui.NOTIFICATION_INFO, 1000)
+
+        success = self._do_refresh(real_path, recursive)
+        
+        if success:
+             xbmcgui.Dialog().notification('成功', 'openlist刷新成功', xbmcgui.NOTIFICATION_INFO, 1000)
+        
+        return success
+
+    def _do_refresh(self, real_path, recursive):
         if real_path == '/' or real_path == '':
              xbmcgui.Dialog().notification('openlist刷新', '跳过根目录', xbmcgui.NOTIFICATION_INFO, 1000)
              # Return True to indicate no error, just skipped
              return True
         
-        xbmc.log("[WebDAV Refresh] Refreshing Path: {}".format(real_path), xbmc.LOGINFO)
+        xbmc.log("[WebDAV Refresh] Refreshing Path: {} (Recursive: {})".format(real_path, recursive), xbmc.LOGINFO)
 
+        refresh_url = "{}/api/fs/list".format(self.base_url)
         refresh_payload = {
             "path": real_path,
             "password": "",
@@ -104,7 +117,15 @@ class OpenListRefresher:
             res_refresh = r_refresh.json()
             
             if res_refresh.get('code') == 200:
-                xbmcgui.Dialog().notification('成功', 'openlist刷新成功', xbmcgui.NOTIFICATION_INFO, 1000)
+                # Recursive Logic
+                if recursive:
+                    sub_dirs = self._get_sub_dirs(real_path)
+                    if sub_dirs:
+                        for d in sub_dirs:
+                            # d['path'] is now guaranteed by _get_sub_dirs normalization
+                            sub_path = d.get('path')
+                            if sub_path:
+                                self._do_refresh(sub_path, True)
                 return True
             else:
                 msg = res_refresh.get('message', 'Failed')
@@ -115,6 +136,34 @@ class OpenListRefresher:
             xbmcgui.Dialog().notification('openlist刷新错误', str(e), xbmcgui.NOTIFICATION_ERROR)
             xbmc.log("OpenList Refresh Exception: " + str(e), xbmc.LOGERROR)
             return False
+
+    def _get_sub_dirs(self, current_path):
+        dirs_url = "{}/api/fs/dirs".format(self.base_url)
+        payload = {
+            "path": current_path,
+             "password": ""
+        }
+        
+        try:
+            r = requests.post(dirs_url, json=payload, headers=self.headers, timeout=15)
+            data = r.json()
+            
+            if data.get('code') == 200:
+                raw_list = data.get('data', [])
+                # Normalize logic: Inject 'path' into the result so caller doesn't need to know details
+                for item in raw_list:
+                    name = item.get('name')
+                    if name:
+                        # Use posixpath.join for Unix-style (URL) path construction
+                        item['path'] = posixpath.join(current_path, name)
+                return raw_list
+            else:
+                 xbmc.log("[WebDAV Refresh] Get Dirs Failed: {}".format(data.get('message')), xbmc.LOGWARNING)
+                 return []
+        except Exception as e:
+            xbmc.log("[WebDAV Refresh] Get Dirs Exception: {}".format(e), xbmc.LOGERROR)
+            return []
+
 
     def logout(self):
         if not self.token:

@@ -9,6 +9,8 @@ kodi插件，简单实现了 WebDAV 的手动刷新接口，目前只实现了 O
 
 1.  安装插件，然后将按键绑定到 `RunScript(plugin.cloudstorage.webdav.refresh)`
 2.  在 Kodi 中进入想要刷新的 WebDAV (OpenList) 目录按键即可
+3.  **(可选) 递归刷新**：如果希望刷新当前目录及其下所有子目录，请使用参数 `recursive=true`：
+    `RunScript(plugin.cloudstorage.webdav.refresh, recursive=true)`
 
 ### 注意事项
 
