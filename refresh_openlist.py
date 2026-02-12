@@ -4,6 +4,8 @@ import xbmc
 import xbmcgui
 import json
 import posixpath
+import traceback
+import os
 
 try:
     import requests
@@ -119,50 +121,23 @@ class OpenListRefresher:
             if res_refresh.get('code') == 200:
                 # Recursive Logic
                 if recursive:
-                    sub_dirs = self._get_sub_dirs(real_path)
+                    sub_dirs = [os.path.join(real_path, item.get('name')) for item in res_refresh['data'].get('content', []) if item.get('is_dir')]
                     if sub_dirs:
                         for d in sub_dirs:
-                            # d['path'] is now guaranteed by _get_sub_dirs normalization
-                            sub_path = d.get('path')
+                            sub_path = d if d.endswith('/') else d + '/'
                             if sub_path:
                                 self._do_refresh(sub_path, True)
                 return True
             else:
                 msg = res_refresh.get('message', 'Failed')
                 xbmcgui.Dialog().notification('openlist刷新失败', str(msg), xbmcgui.NOTIFICATION_ERROR)
+                xbmc.log("OpenList Refresh Failed: " + str(msg), xbmc.LOGERROR)
                 return False
 
         except Exception as e:
             xbmcgui.Dialog().notification('openlist刷新错误', str(e), xbmcgui.NOTIFICATION_ERROR)
-            xbmc.log("OpenList Refresh Exception: " + str(e), xbmc.LOGERROR)
+            xbmc.log("OpenList Refresh Exception: " + traceback.format_exc(), xbmc.LOGERROR)
             return False
-
-    def _get_sub_dirs(self, current_path):
-        dirs_url = "{}/api/fs/dirs".format(self.base_url)
-        payload = {
-            "path": current_path,
-             "password": ""
-        }
-        
-        try:
-            r = requests.post(dirs_url, json=payload, headers=self.headers, timeout=15)
-            data = r.json()
-            
-            if data.get('code') == 200:
-                raw_list = data.get('data', [])
-                # Normalize logic: Inject 'path' into the result so caller doesn't need to know details
-                for item in raw_list:
-                    name = item.get('name')
-                    if name:
-                        # Use posixpath.join for Unix-style (URL) path construction
-                        item['path'] = posixpath.join(current_path, name)
-                return raw_list
-            else:
-                 xbmc.log("[WebDAV Refresh] Get Dirs Failed: {}".format(data.get('message')), xbmc.LOGWARNING)
-                 return []
-        except Exception as e:
-            xbmc.log("[WebDAV Refresh] Get Dirs Exception: {}".format(e), xbmc.LOGERROR)
-            return []
 
 
     def logout(self):
@@ -174,4 +149,4 @@ class OpenListRefresher:
             requests.get(logout_url, headers=self.headers, timeout=5)
             xbmc.log("[WebDAV Refresh] openlist Logout success", xbmc.LOGINFO)
         except Exception as e_logout:
-            xbmc.log("[WebDAV Refresh] openlist Logout warning: {}".format(e_logout), xbmc.LOGWARNING)
+            xbmc.log("[WebDAV Refresh] openlist Logout warning: {}".format(traceback.format_exc()), xbmc.LOGWARNING)
