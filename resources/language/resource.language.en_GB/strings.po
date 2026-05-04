@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+
+msgctxt "#30100"
+msgid "General"
+msgstr ""
+
+msgctxt "#30101"
+msgid "Server"
+msgstr ""
+
+msgctxt "#30102"
+msgid "OpenList Port"
+msgstr ""
+
+msgctxt "#30103"
+msgid "WebDAV port of the OpenList service to refresh"
+msgstr ""

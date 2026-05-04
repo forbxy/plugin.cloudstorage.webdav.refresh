@@ -5,7 +5,6 @@ import xbmcgui
 import json
 import posixpath
 import traceback
-import os
 
 try:
     import requests
@@ -117,11 +116,15 @@ class OpenListRefresher:
         try:
             r_refresh = requests.post(refresh_url, json=refresh_payload, headers=self.headers, timeout=30)
             res_refresh = r_refresh.json()
-            
+            xbmc.log("[WebDAV Refresh] API path='{}' code={} data_type={}".format(
+                real_path, res_refresh.get('code'), type(res_refresh.get('data')).__name__), xbmc.LOGINFO)
+
             if res_refresh.get('code') == 200:
                 # Recursive Logic
                 if recursive:
-                    sub_dirs = [os.path.join(real_path, item.get('name')) for item in res_refresh['data'].get('content', []) if item.get('is_dir')]
+                    data = res_refresh.get('data')
+                    content = (data or {}).get('content') or []
+                    sub_dirs = [real_path.rstrip('/') + '/' + item.get('name') for item in content if item.get('is_dir')]
                     if sub_dirs:
                         for d in sub_dirs:
                             sub_path = d if d.endswith('/') else d + '/'
@@ -131,7 +134,8 @@ class OpenListRefresher:
             else:
                 msg = res_refresh.get('message', 'Failed')
                 xbmcgui.Dialog().notification('openlist刷新失败', str(msg), xbmcgui.NOTIFICATION_ERROR)
-                xbmc.log("OpenList Refresh Failed: " + str(msg), xbmc.LOGERROR)
+                xbmc.log("OpenList Refresh Failed: path='{}' code={} msg={}".format(
+                    real_path, res_refresh.get('code'), msg), xbmc.LOGERROR)
                 return False
 
         except Exception as e:

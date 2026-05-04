@@ -15,70 +15,71 @@ except ImportError:
 # Import implementations
 from refresh_openlist import OpenListRefresher
 
-def find_credentials_in_passwords_xml(target_path):
-    """
-    Search Kodi passwords.xml (Network Locations) for credentials.
-    """
-    pass_file = xbmcvfs.translatePath('special://profile/passwords.xml')
+def _search_passwords_xml(pass_file, target_path, t_host, t_path):
+    """在单个 passwords.xml 中搜索匹配 target_path 的凭证。"""
     if not xbmcvfs.exists(pass_file):
         return None, None
-        
-    try:
-        # Parse target once
-        try:
-            target_parsed = urllib.parse.urlparse(target_path)
-            t_host = target_parsed.hostname
-            t_path = urllib.parse.unquote(target_parsed.path).rstrip('/')
-        except:
-            return None, None
 
+    try:
         f = xbmcvfs.File(pass_file)
         xml_content = f.read()
         f.close()
-        
-        # Simple string search if XML parsing fails or for robustness, but XML is better
         root = ET.fromstring(xml_content)
-        
-        # <passwords><path><from>...</from><to>...</to></path></passwords>
+
         for path_node in root.findall('path'):
             from_node = path_node.find('from')
             to_node = path_node.find('to')
-            
             if from_node is None or to_node is None:
                 continue
-                
             from_val = from_node.text
             to_val = to_node.text
-            
             if not from_val or not to_val:
                 continue
-            
-            xbmc.log("[WebDAV Refresh] Checking password entry: {} against {}".format(from_val, target_path), xbmc.LOGDEBUG)
 
-            # Fuzzy match logic
+            xbmc.log("[WebDAV Refresh] Checking: {} against {}".format(from_val, target_path), xbmc.LOGDEBUG)
             try:
                 from_parsed = urllib.parse.urlparse(from_val)
-                f_host = from_parsed.hostname
-                
-                # Check Hostname
-                if t_host != f_host:
+                if t_host != from_parsed.hostname:
                     continue
-                
-                # Check Path Prefix (normalized)
                 f_path = urllib.parse.unquote(from_parsed.path).rstrip('/')
-                
-                # If from_path is root, it matches everything on that host
-                # Or if target starts with from_path
                 if t_path == f_path or t_path.startswith(f_path + '/'):
-                    xbmc.log("[WebDAV Refresh] Loose match found: {} for {}".format(from_val, target_path), xbmc.LOGINFO)
+                    xbmc.log("[WebDAV Refresh] Match: {} for {}".format(from_val, target_path), xbmc.LOGINFO)
                     to_parsed = urllib.parse.urlparse(to_val)
                     if to_parsed.username and to_parsed.password:
-                         return to_parsed.username, to_parsed.password
-            except:
+                        return to_parsed.username, to_parsed.password
+            except Exception:
                 pass
     except Exception as e:
-        xbmc.log("[WebDAV Refresh] Error reading passwords.xml: {}".format(e), xbmc.LOGWARNING)
-        
+        xbmc.log("[WebDAV Refresh] Error reading {}: {}".format(pass_file, e), xbmc.LOGWARNING)
+
+    return None, None
+
+
+def find_credentials_in_passwords_xml(target_path):
+    """
+    Search Kodi passwords.xml for credentials.
+    Kodi itself checks current profile first, then falls back to master profile.
+    """
+    try:
+        target_parsed = urllib.parse.urlparse(target_path)
+        t_host = target_parsed.hostname
+        t_path = urllib.parse.unquote(target_parsed.path).rstrip('/')
+    except Exception:
+        return None, None
+
+    # 当前 profile 优先（和 Kodi 源码逻辑一致）
+    profile_file = xbmcvfs.translatePath('special://profile/passwords.xml')
+    user, password = _search_passwords_xml(profile_file, target_path, t_host, t_path)
+    if user and password:
+        return user, password
+
+    # 回退到主 profile
+    master_file = xbmcvfs.translatePath('special://masterprofile/passwords.xml')
+    if master_file != profile_file:
+        user, password = _search_passwords_xml(master_file, target_path, t_host, t_path)
+        if user and password:
+            return user, password
+
     return None, None
 
 def strip_url_params(path):
@@ -88,6 +89,7 @@ def strip_url_params(path):
     return path
 
 def main():
+    ADDON = xbmcaddon.Addon()
     # 0. Parse Arguments
     args = {}
     for arg in sys.argv[1:]:
@@ -163,12 +165,16 @@ def main():
         
     refresher = None
     
-    if int(check_port) == 5244:
-        xbmc.log("[WebDAV Refresh] Port 5244 detected, using OpenListRefresher", xbmc.LOGINFO)
+    configured_port = ADDON.getSettingInt("port")
+    if configured_port < 1024 or configured_port > 65535:
+        configured_port = 5244
+
+    if int(check_port) == configured_port:
+        xbmc.log("[WebDAV Refresh] Port {} detected, using OpenListRefresher".format(configured_port), xbmc.LOGINFO)
         refresher = OpenListRefresher(base_url, username, password)
     else:
-        xbmcgui.Dialog().notification('WebDAV刷新', '尚不支持端口 {}'.format(check_port), xbmcgui.NOTIFICATION_WARNING, 1000)
-        xbmc.log("[WebDAV Refresh] Unsupported port: {}".format(check_port), xbmc.LOGWARNING)
+        xbmcgui.Dialog().notification('WebDAV刷新', '端口不匹配: {} (配置: {})'.format(check_port, configured_port), xbmcgui.NOTIFICATION_WARNING, 1000)
+        xbmc.log("[WebDAV Refresh] Unsupported port: {} (configured: {})".format(check_port, configured_port), xbmc.LOGWARNING)
         return
 
     # === EXECUTION ===
